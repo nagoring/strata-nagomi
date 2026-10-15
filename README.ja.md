@@ -2,6 +2,15 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · **日本語** · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Português](README.pt-BR.md)
 
+> **これは [Niko1221/Strata](https://github.com/Niko1221/Strata)（MIT ライセンス）を改造したもので、公式版ではありません。**
+> このコピーでの変更点:
+> - **Web アプリのチャット履歴（任意）:** `strata-<モデル>.json` に `"chat_dir"` を書くと、会話を1件ずつファイルに保存し、
+>   左側に検索できる一覧を表示します（[docs/DETAILS.md](docs/DETAILS.md)）。
+> - **モデル名の表示:** 画面上部に動作中のモデル名を、各回答にそれを書いたモデル名を表示します。
+>
+> それ以外（setup がダウンロードするビルド済みエンジンを含む）は元のプロジェクトのものです。これらの変更に関する問題は、
+> 元のプロジェクトではなくこちらに報告してください。
+
 <p align="center"><b>1,250 億パラメータの AI モデルを、手元のゲーミング PC で動かす</b><br>
 NVIDIA または AMD のグラフィックカード（12 GB 以上） · Windows または Linux · 無料・オープンソース</p>
 

@@ -25,6 +25,9 @@ __pycache__/
 *.occ1
 td.log
 
+# backups of the run configs (the configs and run-*.bat are below)
+/strata-*.json.bak*
+
 # created by setup.py on the user's machine
 /.venv/
 /build/

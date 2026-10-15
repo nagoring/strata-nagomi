@@ -2,6 +2,15 @@
 
 **English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Português](README.pt-BR.md)
 
+> **This is a modified copy of [Niko1221/Strata](https://github.com/Niko1221/Strata)** (MIT License), not the
+> official project. Changes in this copy:
+> - **Chat history in the web app (opt-in):** `"chat_dir"` in `strata-<model>.json` keeps every conversation as a
+>   file, with a searchable list on the left (see [docs/DETAILS.md](docs/DETAILS.md)).
+> - **Model name display:** the header shows the running model, and each answer names the model that wrote it.
+>
+> Everything else, including the prebuilt engines that setup downloads, comes from the original project. Report
+> problems with these changes here, not to the original project.
+
 <p align="center"><b>Run a 125-billion-parameter AI model on your own gaming PC</b><br>
 NVIDIA or AMD graphics card (12 GB or more) · Windows or Linux · free and open source</p>
 
