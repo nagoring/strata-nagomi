@@ -11,6 +11,12 @@ main { flex: 1; min-height: 0; display: flex; }
 .card-title { font-weight: var(--st-fw-bold); font-size: var(--st-fs-base); color: var(--st-ink); }
 .st-header { position: relative; z-index: 2; flex: none; }
 .st-header .st-tabs { margin-left: var(--st-s-4); }
+/* the model this server runs (from /health), next to the state pill */
+.model-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 42vw; height: 30px; padding: 0 12px;
+              border-radius: var(--st-r-pill); border: 1px solid var(--st-line); font-size: var(--st-fs-sm);
+              font-weight: var(--st-fw-medium); color: var(--st-ink-soft); }
+.model-name .st-icon { flex: none; }
+#model-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #drawer-close .st-icon { transform: rotate(-90deg); }
 
 /* ---------------------------------------------------------------- chat */
@@ -206,6 +212,7 @@ main { flex: 1; min-height: 0; display: flex; }
   .st-tab { padding: 0 10px; }
   .st-tab .st-icon { display: none; }
   #pill-text { display: none; }
+  .model-name { display: none; }   /* no room beside the tabs: each answer still names its model */
   .chat { padding: var(--st-s-5) var(--st-s-4); }
   .composer-wrap { padding: 0 var(--st-s-3) var(--st-s-3); }
   .monitor, .about { padding: var(--st-s-4); }

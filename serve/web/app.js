@@ -104,6 +104,9 @@ async function loadHealth() {
     $("attach-btn").title = health.images ? "Attach a text file or a picture (or drop it here)"
                                           : "Attach a text file (or drop it here)";
     $("chat-empty-sub").textContent = `${health.model} runs on this PC. Nothing leaves it.`;
+    $("model-name-text").textContent = health.model;
+    $("model-name").title = `The model this server runs: ${health.model}`;
+    $("model-name").hidden = false;
     $("tab-btn-images").hidden = !health.image_generation;
     if (location.hash === "#images" && health.image_generation) showTab("images");
   } catch (e) {
@@ -695,7 +698,9 @@ function updateAssistant(el, m, streaming) {
     bubble.innerHTML = answerHtml(m);
     if (streaming) bubble.classList.add("cursor"); else bubble.classList.remove("cursor");
   }
-  el.querySelector(".meta-text").textContent = m.meta || (streaming ? "" : m.stopped ? "Stopped" : "");
+  // which model wrote it: the history may hold answers of several models (each config can share one chat_dir)
+  el.querySelector(".meta-text").textContent = [m.model, m.meta || (streaming ? "" : m.stopped ? "Stopped" : "")]
+    .filter((s) => s).join(" · ");
   el.querySelector("[data-msg-copy]").hidden = streaming || !m.text;
 }
 function renderChat() {
@@ -788,7 +793,7 @@ async function send() {
   renderAttachments();
   $("input").value = "";
   autosize();
-  const m = {role: "assistant", text: "", reasoning: "", time: Date.now()};
+  const m = {role: "assistant", text: "", reasoning: "", time: Date.now(), model: health.model};
   messages.push(m);
   renderChat();
   const el = $("chat").lastElementChild;
@@ -903,7 +908,7 @@ $("export-btn").onclick = () => {
     `<details><summary>Tool ${t.server ? `${t.server} / ` : ""}${t.tool || t.name}${t.ok ? "" : " (error)"}</summary>\n\n` +
     `\`\`\`json\n${JSON.stringify(t.arguments || {}, null, 2)}\n\`\`\`\n\n\`\`\`\n${t.result}\n\`\`\`\n\n</details>\n\n`).join("");
   const md = messages.map((m) => m.role === "user" ? `## You\n\n${m.text}\n` :
-    `## ${health.model}\n\n${m.reasoning ? `<details><summary>Thinking</summary>\n\n${m.reasoning}\n\n</details>\n\n` : ""}${tools(m)}${m.text || m.error || ""}\n`).join("\n");
+    `## ${m.model || health.model}\n\n${m.reasoning ? `<details><summary>Thinking</summary>\n\n${m.reasoning}\n\n</details>\n\n` : ""}${tools(m)}${m.text || m.error || ""}\n`).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([md], {type: "text/markdown"}));
   a.download = `strata-chat-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.md`;
