@@ -3037,6 +3037,7 @@ class Service:
         self.sampling_defaults = dict(sampling_defaults or {})   # the run config's `sampling` block
         self.shared = {}                              # the web app's Chat settings for every client (POST /settings)
         self.shared_path = None                       # where they are kept between starts (next to the config)
+        self.chats = None                             # (opt-in) serve.chats.ChatStore, the config's "chat_dir"
         self.config_effort = None                     # #1641: the config's "reasoning_effort": the level for requests with none
         self.keep_awake = None                        # #1727 (opt-in): serve.keepawake.KeepAwake, the config's "prevent_sleep"
         self.fifo = threading.Lock()
@@ -5314,6 +5315,10 @@ def make_handler(svc: Service):
                                records if request_id else {"requests": records, "retention": 100, "persistent": False,
                                                           "loaded": svc.loaded(), "auto_load": hasattr(svc.engine, "restart")})
                 return
+            if path == "/api/chats" or path.startswith("/api/chats/"):
+                if self._authorized():
+                    self._chats_get(path)
+                return
             if path == "/settings":
                 if self._authorized():
                     self._json(200, {"shared": bool(svc.shared), "defaults": svc.shared})
@@ -5429,6 +5434,9 @@ def make_handler(svc: Service):
                 return
             if path == "/config":
                 self._config_post()
+                return
+            if path.startswith("/api/chats/"):
+                self._chats_post(path)
                 return
             if path in ("/unload", "/load") and not self._control_body():
                 return
@@ -5715,6 +5723,66 @@ def make_handler(svc: Service):
                 print(f"[strata] the Settings view changed {', '.join(changed)} in {Path(svc.config_path).name} "
                       f"(the earlier file: {bak.name}); used from the next start", flush=True)
             self._json(200, {**runconfig.view(new, svc.config_path), "changed": changed})
+        def _chats_ready(self, what) -> bool:
+            """The chat history (config "chat_dir"): off -> 404; a page of another origin -> 403."""
+            if svc.chats is None:
+                self._json(404, {"error": {"message": "the chat history is off: set \"chat_dir\" in the run config"}})
+                return False
+            if self._foreign_origin():
+                self._json(403, {"error": {"message": f"{what} only from Strata's own page (or an origin in the "
+                                                      f"config's trusted_origins)"}})
+                return False
+            return True
+
+        def _chats_get(self, path):
+            if not self._chats_ready("the chat history can be read"):
+                return
+            try:
+                if path == "/api/chats":
+                    q = parse_qs(urlsplit(self.path).query).get("q", [""])[0]
+                    self._json(200, {"chats": svc.chats.list(q)})
+                    return
+                chat = svc.chats.get(path[len("/api/chats/"):])
+            except ValueError as e:
+                self._json(400, {"error": {"type": "invalid_request_error", "message": str(e)}})
+                return
+            if chat is None:
+                self._json(404, {"error": {"message": "no such chat"}})
+            else:
+                self._json(200, chat)
+
+        def _chats_post(self, path):
+            """Save one conversation whole - JSON from Strata's own page only, as /settings."""
+            body = self._body()
+            if not self._own_page("chats can be saved") or not self._chats_ready("chats can be saved"):
+                return
+            try:
+                head = svc.chats.put(path[len("/api/chats/"):], json.loads(body or b"{}"))
+            except ValueError as e:
+                self._json(400, {"error": {"type": "invalid_request_error", "message": str(e)}})
+                return
+            except OSError as e:
+                self._json(500, {"error": {"type": "server_error", "message": f"the chat cannot be written: {e}"}})
+                return
+            self._json(200, head)
+
+        def do_DELETE(self):
+            path = self.path.split("?")[0].rstrip("/")
+            if not path.startswith("/api/chats/"):
+                self._json(404, {"error": {"message": "not found"}})
+                return
+            if not self._authorized() or not self._chats_ready("chats can be deleted"):
+                return
+            try:
+                gone = svc.chats.delete(path[len("/api/chats/"):])
+            except ValueError as e:
+                self._json(400, {"error": {"type": "invalid_request_error", "message": str(e)}})
+                return
+            except OSError as e:
+                self._json(500, {"error": {"type": "server_error", "message": f"the chat cannot be deleted: {e}"}})
+                return
+            self._json(200 if gone else 404, {"deleted": gone})
+
         def _foreign_origin(self) -> bool:
             """A web page of another origin sent this.  The Origin must be this server's own address (host and port),
             or an origin the config trusts (trusted_origins: the web app behind a reverse proxy or tunnel); no Origin
@@ -6908,6 +6976,13 @@ def main() -> int:
                       ", ".join(f"{k}={v}" for k, v in svc.shared.items()), flush=True)
         except (OSError, ValueError):
             svc.shared = {}
+    if cfg.get("chat_dir"):                             # (opt-in) the web app's chat history, one file each
+        from serve.chats import ChatStore
+        try:
+            svc.chats = ChatStore(Path(cfg["chat_dir"]).expanduser())
+        except OSError as e:
+            raise SystemExit(f"[strata] config \"chat_dir\": the folder {cfg['chat_dir']!r} cannot be used: {e}")
+        print(f"[strata] the web app keeps its chats in {svc.chats.dir}", flush=True)
     if hub is not None:
         import atexit
         svc.mcp = hub

@@ -565,10 +565,18 @@ let settings = {...DEFAULTS, ...store.get("sampling", {})};
 let messages = store.get("chat", []);
 let attachments = [];                 // {name, url}
 let busy = null;                      // {controller, msg}
+let chatInfo = store.get("chatInfo", null);   // the open chat's file on the server: {id, title, created}; null: not saved yet
+const hist = {on: false, list: [], query: "", saving: null, again: false};   // the chat history (config "chat_dir")
 
-function saveChat() {
+// the open chat in this browser (a reload keeps it); with a chat history on the server, also its file there
+function saveLocal() {
   store.set("chat", messages.map((m) => ({...m, images: (m.images || []).map((i) => ({name: i.name})),
                                            files: (m.files || []).map((f) => ({name: f.name}))})));
+  store.set("chatInfo", chatInfo);
+}
+function saveChat() {
+  saveLocal();
+  if (hist.on && messages.length) saveRemote();
 }
 function timeStr(t) { return new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}); }
 
@@ -881,6 +889,7 @@ $("input").addEventListener("input", autosize);
 
 $("new-btn").onclick = () => {
   if (busy) { toast("warn", "Still writing", "Stop the answer first."); return; }
+  if (hist.on) { startNew(); return; }               // the last one stays in the history
   if (!messages.length) return;
   const backup = messages;
   messages = [];
@@ -901,6 +910,182 @@ $("export-btn").onclick = () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 };
+
+// ------------------------------------------------------------------ chat history (config "chat_dir")
+// When the server keeps one (GET api/chats answers), every conversation is a file there: the list on the left, "New
+// chat" keeps the last one, and each finished answer saves the open one.  Without it: one chat, in this browser.
+const newId = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") :
+                     Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+async function errText(r) {
+  try { return (await r.json()).error.message || `HTTP ${r.status}`; } catch (e) { return `HTTP ${r.status}`; }
+}
+function autoTitle() {
+  const m = messages.find((x) => x.role === "user");
+  const t = m ? (m.text || (m.files && m.files[0] && m.files[0].name) || (m.images && m.images.length ? "Picture" : "")) : "";
+  return t.replace(/\s+/g, " ").trim().slice(0, 80) || "Untitled";
+}
+// what the file keeps: pictures by name only (as in this browser), attached text files with their text
+function chatRecord() {
+  return messages.map((m) => ({...m, images: (m.images || []).map((i) => ({name: i.name})),
+                               files: (m.files || []).map((f) => (f.text != null ? {name: f.name, text: f.text} : {name: f.name}))}));
+}
+function saveRemote() {
+  if (hist.saving) { hist.again = true; return hist.saving; }   // one save at a time; the latest state goes next
+  if (!chatInfo) chatInfo = {id: newId(), title: "", created: Date.now()};
+  if (!chatInfo.title) chatInfo.title = autoTitle();
+  store.set("chatInfo", chatInfo);
+  const id = chatInfo.id;
+  const body = {title: chatInfo.title, created: chatInfo.created, updated: Date.now(), messages: chatRecord()};
+  hist.saving = (async () => {
+    try {
+      const r = await fetch(`api/chats/${id}`, {method: "POST", headers: headers(true), body: JSON.stringify(body)});
+      if (!r.ok) throw new Error(await errText(r));
+    } catch (e) {
+      toast("error", "The chat was not saved", e.message || String(e), 6000);
+    }
+    hist.saving = null;
+    if (hist.again) { hist.again = false; if (messages.length) await saveRemote(); }
+    await loadList();
+  })();
+  return hist.saving;
+}
+async function loadList() {
+  try {
+    const r = await fetch(`api/chats${hist.query ? `?q=${encodeURIComponent(hist.query)}` : ""}`, {headers: headers()});
+    if (!r.ok) return false;
+    hist.list = (await r.json()).chats || [];
+  } catch (e) {
+    return false;
+  }
+  renderList();
+  return true;
+}
+function renderList() {
+  const box = $("side-list");
+  box.innerHTML = "";
+  if (!hist.list.length) {
+    box.innerHTML = `<div class="side-empty">${hist.query ? "No chat matches." : "No saved chats yet."}</div>`;
+    return;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const t0 = today.getTime(), D = 86400000;
+  const group = (t) => t >= t0 ? "Today" : t >= t0 - D ? "Yesterday" : t >= t0 - 7 * D ? "Previous 7 days" :
+                       t >= t0 - 30 * D ? "Previous 30 days" : "Older";
+  let last = null;
+  for (const c of hist.list) {
+    const g = group(c.updated || 0);
+    if (g !== last) {
+      const h = document.createElement("div");
+      h.className = "side-group";
+      h.textContent = last = g;
+      box.appendChild(h);
+    }
+    const el = document.createElement("div");
+    el.className = "side-item";
+    el.dataset.id = c.id;
+    if (chatInfo && chatInfo.id === c.id) el.setAttribute("aria-current", "true");
+    el.innerHTML = `<button type="button" class="side-item__open" data-open></button>` +
+      `<button type="button" class="st-btn st-btn--icon" data-rename title="Rename" aria-label="Rename">${icon("edit")}</button>` +
+      `<button type="button" class="st-btn st-btn--icon" data-delete title="Delete" aria-label="Delete">${icon("trash")}</button>`;
+    const b = el.querySelector("[data-open]");
+    b.textContent = c.title || "Untitled";
+    b.title = `${c.title || "Untitled"}\n${new Date(c.updated || 0).toLocaleString()} · ${c.messages} messages`;
+    box.appendChild(el);
+  }
+}
+function setSide(open) {
+  $("chat-side").hidden = !open;
+  if (innerWidth > 800) store.set("sideOpen", open);
+}
+const narrowSide = () => { if (innerWidth <= 800) setSide(false); };
+function startNew() {
+  messages = [];
+  chatInfo = null;
+  saveLocal();
+  renderChat();
+  renderList();
+  narrowSide();
+  $("input").focus();
+}
+async function openChat(id) {
+  if (busy) { toast("warn", "Still writing", "Stop the answer first."); return; }
+  if (chatInfo && chatInfo.id === id) { narrowSide(); return; }
+  try {
+    const r = await fetch(`api/chats/${id}`, {headers: headers()});
+    if (!r.ok) throw new Error(await errText(r));
+    const c = await r.json();
+    messages = Array.isArray(c.messages) ? c.messages : [];
+    chatInfo = {id: c.id, title: c.title || "", created: c.created || Date.now()};
+  } catch (e) {
+    toast("error", "The chat cannot be opened", e.message || String(e), 6000);
+    return;
+  }
+  saveLocal();
+  renderChat();
+  renderList();
+  narrowSide();
+}
+async function renameChat(id) {
+  const c = hist.list.find((x) => x.id === id);
+  const title = prompt("Rename this chat", c ? c.title : "");
+  if (title == null || !title.trim()) return;
+  if (chatInfo && chatInfo.id === id) {
+    chatInfo.title = title.trim().slice(0, 200);
+    await saveRemote();
+    return;
+  }
+  try {                                              // another chat: its file with the new title, the rest as it was
+    const r = await fetch(`api/chats/${id}`, {headers: headers()});
+    if (!r.ok) throw new Error(await errText(r));
+    const chat = await r.json();
+    const w = await fetch(`api/chats/${id}`, {method: "POST", headers: headers(true),
+                                              body: JSON.stringify({...chat, title: title.trim().slice(0, 200)})});
+    if (!w.ok) throw new Error(await errText(w));
+  } catch (e) {
+    toast("error", "The chat was not renamed", e.message || String(e), 6000);
+  }
+  await loadList();
+}
+async function deleteChat(id) {
+  const c = hist.list.find((x) => x.id === id);
+  if (busy && chatInfo && chatInfo.id === id) { toast("warn", "Still writing", "Stop the answer first."); return; }
+  if (!confirm(`Delete "${c ? c.title : "this chat"}"?\nIts file in the chat folder is removed; this cannot be undone.`)) return;
+  try {
+    const r = await fetch(`api/chats/${id}`, {method: "DELETE", headers: headers()});
+    if (!r.ok && r.status !== 404) throw new Error(await errText(r));
+  } catch (e) {
+    toast("error", "The chat was not deleted", e.message || String(e), 6000);
+    return;
+  }
+  if (chatInfo && chatInfo.id === id) startNew();
+  await loadList();
+}
+$("side-list").addEventListener("click", (e) => {
+  const item = e.target.closest(".side-item");
+  if (!item) return;
+  if (e.target.closest("[data-delete]")) deleteChat(item.dataset.id);
+  else if (e.target.closest("[data-rename]")) renameChat(item.dataset.id);
+  else if (e.target.closest("[data-open]")) openChat(item.dataset.id);
+});
+let searchTimer = 0;
+$("side-search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { hist.query = $("side-search").value.trim(); loadList(); }, 250);
+});
+$("side-btn").onclick = () => setSide($("chat-side").hidden);
+$("side-close-btn").onclick = () => setSide(false);
+$("side-new-btn").onclick = () => $("new-btn").click();
+async function initHistory() {
+  if (!(await loadList())) return;                   // no history on this server: one chat, in this browser, as before
+  hist.on = true;
+  $("side-btn").hidden = false;
+  setSide(innerWidth > 800 && store.get("sideOpen", true));
+  const had = chatInfo && hist.list.some((c) => c.id === chatInfo.id) ? chatInfo.id : null;
+  chatInfo = null;
+  if (had) await openChat(had);                      // the file is the conversation (another tab may have added to it)
+  else if (messages.length) await saveRemote();      // the chat this browser had (or one deleted elsewhere): a new file
+}
 
 // pictures and text files: the attach button, dropping them on the chat, or pasting a picture (issue #30)
 const TEXT_EXT = /\.(txt|md|markdown|rst|tex|py|pyi|ipynb|js|mjs|cjs|ts|tsx|jsx|vue|svelte|json|jsonl|csv|tsv|log|ya?ml|toml|ini|cfg|conf|env|xml|html?|css|scss|less|c|cc|cpp|cxx|h|hh|hpp|cu|cuh|rs|go|java|kt|kts|swift|rb|php|pl|lua|r|jl|scala|sql|sh|bash|zsh|fish|ps1|psm1|bat|cmd|diff|patch|gradle|cmake|mk|dockerfile|gitignore|proto|graphql)$/i;
@@ -1081,7 +1266,9 @@ setBusy(false);
 renderChat();
 const startQuestion = new URLSearchParams(location.search).get("q");   // /?q=... starts a chat (a shortcut)
 if (startQuestion) history.replaceState(null, "", location.pathname + location.hash);
-loadHealth().then(loadMcp).then(() => { if (startQuestion) { $("input").value = startQuestion; send(); } });
+Promise.all([loadHealth().then(loadMcp), initHistory()]).then(() => {
+  if (startQuestion) { if (hist.on) startNew(); $("input").value = startQuestion; send(); }
+});
 showTab(location.hash.slice(1) || "chat");
 poll();
 

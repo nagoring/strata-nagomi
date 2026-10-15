@@ -768,6 +768,14 @@ print(r.choices[0].message.content)
   from going to sleep while at least one request is running or waiting (Windows' `SetThreadExecutionState` with
   `ES_SYSTEM_REQUIRED`; the screen may still turn off), and gives the normal sleep rules back when the server is idle
   and when it exits. Default off. On Linux and macOS it does nothing (one line at startup says so).
+- **Chat history in the web app (opt-in).** `"chat_dir": "E:/Strata-data/chats"` in `strata-<model>.json` keeps every
+  conversation of the web app's Chat view as one JSON file in that folder (created if missing). The view then shows a
+  list on the left (newest first, grouped by day, searchable, with rename and delete), "New chat" keeps the last one,
+  and each finished answer saves the open chat. Pictures are kept by name only, as before; attached text files keep
+  their text. The files are read and written through `GET /api/chats` (`?q=` searches titles and text),
+  `GET /api/chats/<id>`, `POST /api/chats/<id>` and `DELETE /api/chats/<id>`: only from Strata's own page or a client
+  that is no browser, with the API key when one is set. Without the key the web app keeps one chat in the browser, as
+  before. Two configs may name the same folder.
 - **A hard thinking budget (opt-in).** `"reasoning_budget_tokens": N` in a request (OpenAI or Anthropic) caps the
   thinking at N tokens: when it gets there the server ends it with a short wrap-up line and `</think>`, and the model
   answers from there (the engine continues from what it already holds, so nothing is read again). The wrap-up is

@@ -40,6 +40,18 @@
 <main>
   <!-- ============================ Chat ============================ -->
   <section class="view view--chat" id="view-chat" role="tabpanel" aria-labelledby="tab-btn-chat">
+    <!-- the chat history (config "chat_dir"): shown only when the server keeps one -->
+    <aside class="chat-side" id="chat-side" aria-label="Chat history" hidden>
+      <div class="chat-side__head">
+        <button type="button" class="st-btn st-btn--secondary chat-side__new" id="side-new-btn">
+          <svg class="st-icon st-icon--sm"><use href="web/sprite.svg#i-new-chat"/></svg>New chat</button>
+        <button type="button" class="st-btn st-btn--icon" id="side-close-btn" title="Hide the history" aria-label="Hide the history">
+          <svg class="st-icon"><use href="web/sprite.svg#i-sidebar"/></svg></button>
+      </div>
+      <input class="st-input chat-side__search" id="side-search" type="search" placeholder="Search chats&hellip;" aria-label="Search chats">
+      <nav class="chat-side__list" id="side-list"></nav>
+    </aside>
+    <div class="chat-main">
     <div class="chat-scroll" id="chat-scroll">
       <div class="chat" id="chat">
         <div class="chat-empty" id="chat-empty">
@@ -56,6 +68,8 @@
           <button type="button" class="st-btn st-btn--icon" id="attach-btn" title="Attach a text file (or drop it here)" aria-label="Attach a file">
             <svg class="st-icon"><use href="web/sprite.svg#i-attach"/></svg></button>
           <input type="file" id="file" multiple hidden>
+          <button type="button" class="st-btn st-btn--icon" id="side-btn" title="Chat history" aria-label="Chat history" hidden>
+            <svg class="st-icon"><use href="web/sprite.svg#i-sidebar"/></svg></button>
           <button type="button" class="st-btn st-btn--icon" id="new-btn" title="New chat" aria-label="New chat">
             <svg class="st-icon"><use href="web/sprite.svg#i-new-chat"/></svg></button>
           <button type="button" class="st-btn st-btn--icon" id="export-btn" title="Save this chat as Markdown" aria-label="Save this chat">
@@ -70,6 +84,7 @@
             <svg class="st-icon"><use href="web/sprite.svg#i-send"/></svg></button>
         </div>
       </form>
+    </div>
     </div>
   </section>
 
